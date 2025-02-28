@@ -1,6 +1,7 @@
 defmodule EctoSync.Helpers do
   @moduledoc false
   alias EctoSync.SyncConfig
+
   def ecto_schema_mod?(schema_mod) do
     schema_mod.__schema__(:fields)
 
@@ -50,6 +51,18 @@ defmodule EctoSync.Helpers do
 
     value
   end
+
+  def primary_key(%{__struct__: schema_mod} = value) when is_struct(value) do
+    primary_key(schema_mod)
+    |> then(&Map.get(value, &1))
+  end
+
+  def primary_key(schema_mod) when is_atom(schema_mod) do
+    :primary_key
+    |> schema_mod.__schema__()
+    |> hd()
+  end
+
   def reduce_assocs(schema_mod, acc \\ nil, function) when is_function(function) do
     schema_mod.__schema__(:associations)
     |> Enum.reduce(acc, fn key, acc ->

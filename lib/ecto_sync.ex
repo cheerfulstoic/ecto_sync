@@ -108,10 +108,7 @@ defmodule EctoSync do
 
     id =
       if ecto_schema_mod?(schema) do
-        :primary_key
-        |> schema.__schema__()
-        |> hd()
-        |> then(&Map.get(value, &1))
+        primary_key(value)
       else
         raise_no_ecto(schema)
       end
@@ -144,7 +141,6 @@ defmodule EctoSync do
 
   def subscribe_assocs(schema, id) when is_struct(schema) do
     schema_mod = get_schema(schema)
-    # TODO use primary key
     subscribe_assocs(schema_mod, id || schema.id)
   end
 
@@ -229,10 +225,7 @@ defmodule EctoSync do
   defp do_subscribe_preloads(value, seen, callback) when is_function(callback) do
     schema_mod = get_schema(value)
 
-    id =
-      schema_mod.__schema__(:primary_key)
-      |> hd()
-      |> then(&Map.get(value, &1))
+    id = primary_key(value)
 
     if ecto_schema_mod?(schema_mod) do
       reduce_preloaded_assocs(value, seen, fn
@@ -344,7 +337,7 @@ defmodule EctoSync do
 
   defp assoc_events(assoc) do
     subscribe_events(assoc)
-    |> Enum.map(&{&1, assoc.id})
+    |> Enum.map(&{&1, primary_key(assoc)})
   end
 
   defp do_subscribe(events, id, opts) do

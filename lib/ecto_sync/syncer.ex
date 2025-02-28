@@ -213,18 +213,17 @@ defmodule EctoSync.Syncer do
   def find_by_primary_key([value | _] = values, needle) when is_struct(value) do
     schema_mod = get_schema(value)
 
-    [primary_key] =
-      schema_mod.__schema__(:primary_key)
+    primary_key = primary_key(schema_mod)
 
     Enum.find_index(values, &same_record?(&1, needle, primary_key))
   end
 
   defp same_record?(v1, v2, primary_key \\ nil)
 
-  defp same_record?(%{__struct__: mod} = v1, %{__struct__: mod} = v2, primary_key) do
+  defp same_record?(%{__struct__: schema_mod} = v1, %{__struct__: schema_mod} = v2, primary_key) do
     primary_key =
       if primary_key == nil do
-        mod.__schema__(:primary_key) |> hd()
+        primary_key(schema_mod)
       else
         primary_key
       end
@@ -232,10 +231,10 @@ defmodule EctoSync.Syncer do
     Map.get(v1, primary_key) == Map.get(v2, primary_key)
   end
 
-  defp same_record?(%{__struct__: mod} = v1, {mod, id}, primary_key) do
+  defp same_record?(%{__struct__: schema_mod} = v1, {schema_mod, id}, primary_key) do
     primary_key =
       if primary_key == nil do
-        mod.__schema__(:primary_key) |> hd()
+        primary_key(schema_mod)
       else
         primary_key
       end
