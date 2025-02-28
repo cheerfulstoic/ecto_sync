@@ -1,5 +1,5 @@
 defmodule EctoSyncTest do
-  use EctoSync.RepoCase, async: false
+  use EctoSync.RepoCase
   import EctoSync
 
   setup do
