@@ -1,5 +1,5 @@
 defmodule EctoSyncTest do
-  use EctoSync.RepoCase
+  use EctoSync.RepoCase, async: false
   import EctoSync
 
   setup do
@@ -570,6 +570,12 @@ defmodule EctoSyncTest do
 
       subscribe_preloads(person)
 
+      {:ok, other_tag} = TestRepo.insert(%Tag{})
+
+      {:ok, _tag} =
+        Ecto.Changeset.change(other_tag, %{name: "other_updated"})
+        |> TestRepo.update()
+
       {:ok, _tag} =
         Ecto.Changeset.change(tag, %{name: "updated"})
         |> TestRepo.update()
@@ -581,6 +587,36 @@ defmodule EctoSyncTest do
       after
         1000 -> raise "no tag update"
       end
+    end
+
+    test "updated subscribe_assocs", %{person_with_posts_and_tags: person} do
+      preloads = [posts: [:tags, :labels]]
+      %{posts: [%{tags: [tag]}, _post2]} = person = do_preload(person, preloads)
+
+      subscribe_assocs(person)
+
+      {:ok, other_tag} = TestRepo.insert(%Tag{})
+
+      {:ok, _tag} =
+        Ecto.Changeset.change(other_tag, %{name: "other_updated"})
+        |> TestRepo.update()
+
+      {:ok, _tag} =
+        Ecto.Changeset.change(tag, %{name: "updated"})
+        |> TestRepo.update()
+
+      flush()
+      |> Enum.each(fn
+        {{Tag, :updated}, sync_args} ->
+          {:ok, synced} = EctoSync.sync(person, sync_args)
+          assert do_preload(person, preloads) == synced
+
+        {{Tag, :inserted}, _} ->
+          false
+
+        message ->
+          raise "#{inspect(message)}"
+      end)
     end
 
     test "deleted", %{person_with_posts_and_tags: person} do
@@ -703,5 +739,15 @@ defmodule EctoSyncTest do
   defp do_preload(value, preloads) do
     Ecto.reset_fields(value, preloads)
     |> TestRepo.preload(preloads, force: true)
+  end
+
+  defp flush(messages \\ []) do
+    receive do
+      message -> flush([message | messages])
+    after
+      1000 ->
+        messages
+        |> Enum.reverse()
+    end
   end
 end

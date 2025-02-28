@@ -166,7 +166,7 @@ defmodule EctoSync do
           seen
         else
           all_events
-          |> Enum.map(fn {watcher_identifier, id} ->
+          |> Enum.each(fn {watcher_identifier, id} ->
             subscribe(watcher_identifier, id)
           end)
 
