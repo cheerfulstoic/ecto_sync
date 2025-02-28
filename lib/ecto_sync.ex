@@ -74,8 +74,6 @@ defmodule EctoSync do
     Registry.lookup(EventRegistry, {{schema, event}, id})
   end
 
-  @spec subscribe(schema_or_list_of_schemas() | EctoWatch.watcher_identifier(), term(), term()) ::
-          subscriptions()
   @doc """
   Subscribe to Ecto.Schema(s) provided. The input can be one of following:
    - an Ecto.Schema struct, 
@@ -97,6 +95,8 @@ defmodule EctoSync do
   iex> EctoSync.subscribe(%Test{id: 1})
   [{{Test, :updated}, 1}, {{Test, :deleted}, 1}]
   """
+  @spec subscribe(schema_or_list_of_schemas() | EctoWatch.watcher_identifier(), term(), term()) ::
+          subscriptions()
   def subscribe(values, id \\ nil, opts \\ [])
 
   def subscribe(values, id, opts) when is_list(values),

@@ -4,6 +4,7 @@ defmodule EctoSync.EventHandler do
   use GenServer
 
   import EctoSync.Helpers
+  alias EctoSync.SyncConfig
 
   @events ~w/inserted updated deleted/a
 
@@ -80,9 +81,8 @@ defmodule EctoSync.EventHandler do
         _ -> Map.pop(identifiers, :id)
       end
 
-    {:ok, _key} = update_cache(schema_event, id, [], state.config)
-
-    ref = :erlang.make_ref()
+    sync_config = SyncConfig.new(id, schema_event, state.config.cache_name, state.config.repo)
+    {:ok, _key} = update_cache(sync_config)
 
     [registry_id | Map.to_list(extra)]
     |> Enum.flat_map(fn identifier ->
@@ -92,23 +92,19 @@ defmodule EctoSync.EventHandler do
     end)
     |> Enum.uniq()
     |> Enum.each(fn pid ->
-      broadcast(pid, [], schema_event, id, Map.put(state.config, :ref, ref))
+      broadcast(pid, sync_config, [])
     end)
 
     {:noreply, state}
   end
 
-  defp broadcast(pid, opts, schema_event, id, config) do
+  defp broadcast(pid, sync_config, opts) do
     _preloads = opts[:preloads] || []
-    get_fun = opts[:get_fun] || (&config.repo.get(&1, &2))
 
-    config =
-      Map.take(config, ~w/cache_name repo ref/a)
-      |> Map.put(:get_fun, get_fun)
+    args =
+      SyncConfig.maybe_put_get_fun(sync_config, opts[:get_fun])
 
-    args = {schema_event, id, config}
-
-    send(pid, {schema_event, args})
+    send(pid, {{sync_config.schema, sync_config.event}, args})
   end
 
   defp normalize_event(label_event) when is_atom(label_event) do
