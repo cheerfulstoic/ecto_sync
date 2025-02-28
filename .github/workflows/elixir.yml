@@ -88,8 +88,6 @@ jobs:
           mix local.hex --force
           mix deps.get
       - name: Run Tests
-        env: 
-          DB_HOST: postgres
         run: mix test
 
   matrix-results:
