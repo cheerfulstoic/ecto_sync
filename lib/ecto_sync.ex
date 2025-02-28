@@ -210,9 +210,7 @@ defmodule EctoSync do
     reduce_to_seen(value, &do_subscribe_preloads(&1, &2, callback))
   end
 
-  def sync(struct, args) do
-    EventHandler.sync(struct, args)
-  end
+  defdelegate sync(struct, config), to: EctoSync.Syncer
 
   defp do_subscribe_all(value, seen, _callback \\ nil) when is_struct(value) do
     schema_mod = get_schema(value)

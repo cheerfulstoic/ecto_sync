@@ -60,4 +60,32 @@ defmodule EctoSync.Helpers do
       function.(key, acc)
     end
   end
+
+  def get_from_cache([schema, id | _] = key, config) do
+    key =
+      List.to_tuple(key ++ [config.ref])
+
+    {_, value} =
+      Cachex.fetch(config.cache_name, key, fn _key ->
+        {:commit, config.get_fun.(schema, id)}
+      end)
+
+    value
+  end
+
+  def update_cache({schema, :deleted}, id, _, config) do
+    Cachex.del(config.cache_name, {schema, id})
+    {:ok, {schema, id}}
+  end
+
+  def update_cache({schema, _event}, id, preloads, config) do
+    key = {schema, id}
+
+    record =
+      config.repo.get!(schema, id)
+      |> config.repo.preload(preloads)
+
+    {:ok, true} = Cachex.put(config.cache_name, key, record)
+    {:ok, key}
+  end
 end

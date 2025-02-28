@@ -9,6 +9,7 @@ defmodule EctoSync.MixProject do
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      aliases: aliases(),
       deps: deps(),
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
@@ -50,5 +51,9 @@ defmodule EctoSync.MixProject do
       {:dialyxir, "~> 1.2", runtime: false, only: [:dev, :test]},
       {:excoveralls, "~> 0.18.0", runtime: false, only: [:test]}
     ]
+  end
+
+  defp aliases do
+    [test: ["ecto.create --quiet -r TestRepo", "ecto.migrate --quiet -r TestRepo", "test"]]
   end
 end
