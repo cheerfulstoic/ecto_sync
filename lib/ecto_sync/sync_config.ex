@@ -1,5 +1,6 @@
 defmodule EctoSync.SyncConfig do
   @moduledoc false
+  @type t :: %__MODULE__{}
   defstruct id: nil,
             schema: nil,
             event: nil,
