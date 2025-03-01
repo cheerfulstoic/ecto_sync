@@ -29,7 +29,7 @@ def handle_info({{Tag, _event}, sync_args}, socket) do
 end
 ```
 1. When a Tag is updated, all posts that contain that tag  will be updated.
-2. When a Tag is inserted, the tag will automatically be add to the corresponding post.
+2. When a Tag is inserted, the tag will automatically be added to the corresponding post.
 
 The tag is loaded from the database once for each event handled by EctoSync. 
 The result is then cached and this cached version will be used when other processes call
