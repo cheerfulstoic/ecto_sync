@@ -1,7 +1,5 @@
 defmodule EctoSync.Syncer do
-  @moduledoc """
-  Internal module that holds all the syncing logic.
-  """
+  @moduledoc false
   alias EctoSync.SyncConfig
   alias Ecto.Schema
   alias Ecto.Association.{BelongsTo, Has, ManyToMany}
