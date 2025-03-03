@@ -5,11 +5,21 @@
 Subscribe to events emitted by EctoWatch, cache the result, allow subscribers to sync.
 ```
 
-## Use cases:
+## Use cases
 ### Schema:
 Post <-> PostsTags <-> Tag
 
 ### Subscribe to alterations of assocs of loaded rows (in a LiveView for example):
+#### application.ex
+```
+children = [
+  ...,
+  {EctoSync,
+   repo: MyRepo,
+   pub_sub: MyPubSub,
+   watchers: EctoSync.all_events(Posts, assocs: true)
+```
+#### PostLive.ex
 ```
 alias MyApp.Posts.Post
 alias MyApp.Posts.Tag
@@ -86,14 +96,10 @@ children = [
    pub_sub: MyPubSub,
    watchers:
      EctoSync.all_events(Schema)
-     |> EctoSync.all_events(OtherSchema, add_assocs: true)
+     |> EctoSync.all_events(OtherSchema, assocs: :some_assocs)
      |> EctoSync.all_events(AnotherSchema, extra_columns: [:test_id])},
   ]
 ```
-
-## Future improvements:
- - Generate better representation of schemas and associations to improve the naive method of syncing structs.
- - Implement a pool of EventHandlers.
 
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can

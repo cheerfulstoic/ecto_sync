@@ -2,9 +2,7 @@ defmodule EctoSyncTest do
   use EctoSync.RepoCase, async: false
   import EctoSync
 
-  setup do
-    do_setup()
-  end
+  setup [:do_setup]
 
   describe "all_events/3" do
     test "all events are generated" do
@@ -12,23 +10,35 @@ defmodule EctoSyncTest do
                {Post, :inserted, [extra_columns: []]},
                {Post, :updated, [extra_columns: []]},
                {Post, :deleted, [extra_columns: []]}
-             ] == EctoSync.all_events([], Post)
+             ] == EctoSync.all_events(Post)
     end
 
-    test "add assocs generates belongs_to assocs" do
+    test ":assocs option with keyword assocs" do
       assert [
                {Post, :inserted, [extra_columns: [:person_id]]},
                {Post, :updated, [extra_columns: [:person_id]]},
-               {Post, :deleted, [extra_columns: [:person_id]]}
-             ] == EctoSync.all_events([], Post, add_assocs: true)
+               {Post, :deleted, [extra_columns: [:person_id]]},
+               {Person, :inserted, [extra_columns: []]},
+               {Person, :updated, [extra_columns: []]},
+               {Person, :deleted, [extra_columns: []]},
+               {PostsTags, :inserted, [extra_columns: [:tag_id, :post_id]]},
+               {PostsTags, :updated, [extra_columns: [:tag_id, :post_id]]},
+               {PostsTags, :deleted, [extra_columns: [:tag_id, :post_id]]},
+               {Tag, :inserted, [extra_columns: []]},
+               {Tag, :updated, [extra_columns: []]},
+               {Tag, :deleted, [extra_columns: []]}
+             ] == EctoSync.all_events(Post, assocs: [:person, :tags])
     end
 
-    test "add_assocs merges other columns" do
+    test ":assocs option merges with other columns" do
       assert [
                {Post, :inserted, [extra_columns: [:id, :person_id]]},
                {Post, :updated, [extra_columns: [:id, :person_id]]},
-               {Post, :deleted, [extra_columns: [:id, :person_id]]}
-             ] == EctoSync.all_events([], Post, add_assocs: true, extra_columns: [:id])
+               {Post, :deleted, [extra_columns: [:id, :person_id]]},
+               {Person, :inserted, [extra_columns: []]},
+               {Person, :updated, [extra_columns: []]},
+               {Person, :deleted, [extra_columns: []]}
+             ] == EctoSync.all_events(Post, assocs: [:person], extra_columns: [:id])
     end
 
     test "raises with invalid inputs" do
@@ -36,7 +46,7 @@ defmodule EctoSyncTest do
     end
   end
 
-  describe "subscribe events" do
+  describe "subscribe/3" do
     test "subscribe to Ecto.Schema" do
       assert [
                {{Post, :inserted}, nil},
@@ -696,7 +706,7 @@ defmodule EctoSyncTest do
     end
   end
 
-  defp do_setup() do
+  defp do_setup(_) do
     start_supervised!(TestRepo)
     {:ok, person} = TestRepo.insert(%Person{})
 
@@ -733,11 +743,14 @@ defmodule EctoSyncTest do
              association_columns: [:label_id, :post_id]
            }, :deleted, extra_columns: [:label_id, :post_id], label: :posts_labels_deleted}
         ]
-        |> EctoSync.all_events(Post, extra_columns: [:person_id])
-        |> EctoSync.all_events(Person, add_assocs: true)
-        |> EctoSync.all_events(Tag, add_assocs: true)
-        |> EctoSync.all_events(Label, add_assocs: true)
-        |> EctoSync.all_events(PostsTags, add_assocs: true)
+        |> EctoSync.all_events(Post,
+          assocs: [:person, :tags, :labels],
+          extra_columns: [:person_id]
+        )
+      # |> EctoSync.all_events(Person)
+      # |> EctoSync.all_events(Tag, assocs: )
+      # |> EctoSync.all_events(Label, assocs: true)
+      # |> EctoSync.all_events(PostsTags, assocs: true)
     })
 
     [

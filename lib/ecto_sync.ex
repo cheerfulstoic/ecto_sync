@@ -56,19 +56,109 @@ defmodule EctoSync do
   end
 
   @spec all_events(list(), module(), list()) :: list()
-  def all_events(list \\ [], schema, opts \\ []) when is_atom(schema) do
+  @doc """
+  Create watcher specifications for a given schema.
+
+    * `schema` - The Ecto.Schema to subscribe to.
+
+  ### Options
+    - `:extra_columns`, which extra columns should be included  
+    - `:assocs`, a preload like keyword list of associations to subscribe to. If assocs are specified in the options, the necessary extra_columns will be added or merged to the `:extra_columns` option. 
+
+  ### Examples
+  Assuming the same schemas are present as in the Use Cases page.
+  ```elixir
+  # Generate events for a schema without associations
+  all_events(MyApp.User)
+  # => [
+  #      {MyApp.User, :inserted, []},
+  #      {MyApp.User, :updated, []},
+  #      {MyApp.User, :deleted, []}
+  #    ]
+
+  # Generate events for all associations
+  all_events(MyApp.User, assocs: [:comments, posts: :tags])
+  # => Includes events for:
+  # [
+  #      {MyApp.User, :inserted, []}, {MyApp.User, :updated, []}, {MyApp.User, :deleted, []}
+  #      {MyApp.Post, :inserted, []}, {MyApp.Post, :updated, []}, {MyApp.Post, :deleted, []}
+  #      {MyApp.PostsTags, :inserted, []}, {MyApp.PostsTags, :updated, []}, {MyApp.PostsTags, :deleted, []}
+  #      {{MyApp.Tag, :updated, []}, {MyApp.Tag, :deleted, []}
+  #      {MyApp.Comment, :inserted, []}, {MyApp.Comment, :updated, []}, {MyApp.Comment, :deleted, []}
+  # ]
+
+  # Generate events with three-level deep associations, selectively including `posts` but not `comments`
+  all_events(MyApp.User, assocs: [has: [posts: [has: false]]])
+  # => Includes events for:
+  #      {MyApp.User, :inserted, []}, {MyApp.User, :updated, []}, {MyApp.User, :deleted, []}
+  #      {MyApp.Post, :inserted, []}, {MyApp.Post, :updated, []}, {MyApp.Post, :deleted, []}
+  #      (Does not include `MyApp.Comment`)
+
+  ```
+  """
+  def all_events(watchers \\ [], schema)
+
+  def all_events(watchers, schema) when is_list(watchers) and is_atom(schema),
+    do: all_events(watchers, schema, [])
+
+  def all_events(schema, opts) when is_atom(schema), do: all_events([], schema, opts)
+
+  @doc "See `all_events/2`."
+  def all_events(watchers, schema, opts) do
     unless ecto_schema_mod?(schema) do
       raise ArgumentError, "Expected a module alias to an Ecto Schema"
     end
 
-    opts = maybe_add_belongs_assocs(schema, opts)
+    {assoc_fields, opts} =
+      Keyword.pop(opts, :assocs, [])
 
-    list ++ Enum.map(@events, &{schema, &1, opts})
+    {columns, opts} = Keyword.pop(opts, :extra_columns, [])
+
+    extra_columns =
+      merge_extra_columns(schema, columns, assoc_fields)
+
+    opts = Keyword.put(opts, :extra_columns, extra_columns)
+
+    watchers =
+      (watchers ++ Enum.map(@events, &{schema, &1, opts}))
+      |> Enum.uniq()
+
+    Enum.reduce(assoc_fields, watchers, fn
+      key, watchers when is_tuple(key) or is_atom(key) ->
+        {key, nested} =
+          case key do
+            {_, _} -> key
+            key -> {key, []}
+          end
+
+        case schema.__schema__(:association, key) do
+          %ManyToMany{join_through: join_schema, related: related, join_keys: join_keys}
+          when is_atom(join_schema) ->
+            [{owner_key, _}, {related_key, _}] = join_keys
+            [{join_schema, extra_columns: [owner_key, related_key]}, {related, []}]
+
+          %ManyToMany{related: related} ->
+            [{related, []}]
+
+          %BelongsTo{related: related} ->
+            [{related, []}]
+
+          nil ->
+            Logger.warning("#{schema} does not have associated key: #{inspect(key)}")
+            []
+        end
+        |> Enum.reduce(watchers, fn {schema, opts}, acc ->
+          all_events(acc, schema, Keyword.put(opts, :assocs, nested))
+        end)
+
+      _, watchers ->
+        watchers
+    end)
   end
 
   @spec subscriptions(EctoWatch.watcher_identifier(), term()) :: [{pid(), Registry.value()}]
   @doc """
-  Returns a list of pids that is subscribed to the given watcher identifier.
+  Returns a list of pids that are subscribed to the given watcher identifier.
   """
   def subscriptions({schema, event}, id \\ nil) do
     Registry.lookup(EventRegistry, {{schema, event}, id})
@@ -241,45 +331,6 @@ defmodule EctoSync do
         subscribe_assoc(id, assoc, assoc_info, seen, callback)
       end)
 
-  # defp subscribe_assoc(
-  #        id,
-  #        assoc,
-  #        %ManyToMany{related: related, join_through: join_through, join_keys: join_keys} =
-  #          assoc_info,
-  #        seen,
-  #        callback
-  #      )
-  #      when is_atom(join_through) do
-  #   [{parent_key, _} | _] = join_keys
-  #   # Subscribe to join_through inserts with id 
-  #   # Subscribe to join_through updates, deletes
-
-  #   join_through_inserted =
-  #     [{{join_through, :inserted}, {parent_key, id}}]
-
-  #   join_through_events =
-  #     subscribe_events(join_through)
-  #     |> Enum.map(&{&1, {parent_key, id}})
-
-  #   # Subscribe to related updates, deletes
-  #   assoc_events =
-  #     subscribe_events(assoc)
-  #     |> Enum.map(&{&1, assoc.id})
-  #     |> MapSet.new()
-
-  #   assoc_events =
-  #     (IO.inspect(subscribe_events(assoc), label: :assoc_events) ++
-  #        join_through_events ++ join_through_inserted)
-  #     |> MapSet.new()
-  #     |> MapSet.difference(seen)
-
-  #   for {event, id} <- assoc_events do
-  #     subscribe(event, id)
-  #   end
-
-  #   callback.(assoc, MapSet.union(assoc_events, seen), callback)
-  # end
-
   defp subscribe_assoc(
          id,
          assoc,
@@ -419,29 +470,30 @@ defmodule EctoSync do
     |> MapSet.to_list()
   end
 
-  defp maybe_add_belongs_assocs(schema, opts) do
-    {assoc_fields?, opts} =
-      Keyword.pop(opts, :add_assocs, false)
+  defp merge_extra_columns(schema, columns, assoc_fields) do
+    Enum.reduce(assoc_fields, columns, fn key, columns ->
+      key =
+        case key do
+          {key, _} -> key
+          _ -> key
+        end
 
-    {columns, opts} = Keyword.pop(opts, :extra_columns, [])
+      assoc_info = schema.__schema__(:association, key)
 
-    extra_columns =
-      if assoc_fields? do
-        schema.__schema__(:associations)
-        |> Enum.map(&schema.__schema__(:association, &1))
-        |> Enum.reduce(columns, fn
-          %BelongsTo{owner_key: key}, acc ->
-            [key | acc]
+      case assoc_info do
+        %BelongsTo{owner_key: key} ->
+          [key | columns]
 
-          _, acc ->
-            acc
-        end)
-        |> Enum.reverse()
-      else
-        columns
+        nil ->
+          Logger.warning("#{schema} does not have associated key: #{inspect(key)}")
+
+          columns
+
+        _ ->
+          columns
       end
-
-    Keyword.put(opts, :extra_columns, extra_columns)
+    end)
+    |> Enum.reverse()
   end
 
   defp raise_no_ecto(schema),
