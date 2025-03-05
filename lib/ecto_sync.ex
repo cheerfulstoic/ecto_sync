@@ -109,6 +109,64 @@ defmodule EctoSync do
       raise ArgumentError, "Expected a module alias to an Ecto Schema"
     end
 
+    do_all_events(watchers, schema, opts)
+  end
+
+  defp do_all_events(
+         watchers,
+         %ManyToMany{join_through: join_through, related: related, join_keys: join_keys},
+         opts
+       )
+       when is_atom(join_through) do
+    [{owner_key, _}, {related_key, _}] = join_keys
+
+    [{join_through, extra_columns: [owner_key, related_key]}, {related, opts}]
+    |> Enum.reduce(watchers, fn {schema, opts}, watchers ->
+      do_all_events(watchers, schema, opts)
+    end)
+  end
+
+  defp do_all_events(
+         watchers,
+         %ManyToMany{
+           join_through: join_through,
+           related: related,
+           join_keys: join_keys
+         },
+         opts
+       )
+       when is_binary(join_through) do
+    [{owner_key, _}, {related_key, _}] = join_keys
+    association_columns = [owner_key, related_key]
+
+    @events
+    |> Enum.reduce(watchers, fn event, watchers ->
+      label = String.to_atom("#{join_through}_#{event}")
+
+      [
+        {%{
+           table_name: join_through,
+           primary_key: :id,
+           columns: association_columns,
+           association_columns: association_columns
+         }, event, extra_columns: association_columns, label: label}
+        | watchers
+      ]
+    end)
+    |> do_all_events(related, opts)
+  end
+
+  defp do_all_events(watchers, %BelongsTo{related: related}, opts) do
+    do_all_events(watchers, related, opts)
+  end
+
+  defp do_all_events(watchers, %Has{related: related, related_key: related_key}, opts) do
+    do_all_events(watchers, related, Keyword.put(opts, :extra_columns, [related_key]))
+  end
+
+  defp do_all_events(watchers, nil, _opts), do: watchers
+
+  defp do_all_events(watchers, schema, opts) do
     {assoc_fields, opts} =
       Keyword.pop(opts, :assocs, [])
 
@@ -131,25 +189,8 @@ defmodule EctoSync do
             key -> {key, []}
           end
 
-        case schema.__schema__(:association, key) do
-          %ManyToMany{join_through: join_schema, related: related, join_keys: join_keys}
-          when is_atom(join_schema) ->
-            [{owner_key, _}, {related_key, _}] = join_keys
-            [{join_schema, extra_columns: [owner_key, related_key]}, {related, []}]
-
-          %ManyToMany{related: related} ->
-            [{related, []}]
-
-          %BelongsTo{related: related} ->
-            [{related, []}]
-
-          nil ->
-            Logger.warning("#{schema} does not have associated key: #{inspect(key)}")
-            []
-        end
-        |> Enum.reduce(watchers, fn {schema, opts}, acc ->
-          all_events(acc, schema, Keyword.put(opts, :assocs, nested))
-        end)
+        assoc = schema.__schema__(:association, key)
+        do_all_events(watchers, assoc, Keyword.put([], :assocs, nested))
 
       _, watchers ->
         watchers
@@ -352,7 +393,7 @@ defmodule EctoSync do
 
     # Subscribe to related updates, deletes
     assoc_events =
-      [child_inserted(assoc_info, id) | join_through_events ++ assoc_events(assoc)]
+      [child_inserted_event(assoc_info, id) | join_through_events ++ assoc_events(assoc)]
       |> MapSet.new()
       |> MapSet.difference(seen)
 
@@ -366,9 +407,9 @@ defmodule EctoSync do
   defp subscribe_assoc(id, assoc, assoc_info, seen, callback) do
     all_events =
       if is_nil(assoc) do
-        [child_inserted(assoc_info, id)]
+        [child_inserted_event(assoc_info, id)]
       else
-        [child_inserted(assoc_info, id) | assoc_events(assoc)]
+        [child_inserted_event(assoc_info, id) | assoc_events(assoc)]
       end
       |> MapSet.new()
       |> MapSet.difference(seen)
@@ -441,7 +482,10 @@ defmodule EctoSync do
     end
   end
 
-  defp child_inserted(%ManyToMany{join_through: join_through, join_keys: join_keys}, parent_id) do
+  defp child_inserted_event(
+         %ManyToMany{join_through: join_through, join_keys: join_keys},
+         parent_id
+       ) do
     [{parent_key, _} | _] = join_keys
 
     watcher_identifier =
@@ -454,13 +498,13 @@ defmodule EctoSync do
     {watcher_identifier, {parent_key, parent_id}}
   end
 
-  defp child_inserted(%Has{related_key: related_key, related: schema}, parent_id) do
+  defp child_inserted_event(%Has{related_key: related_key, related: schema}, parent_id) do
     assoc_field = {related_key, parent_id}
 
     {{schema, :inserted}, assoc_field}
   end
 
-  defp child_inserted(%BelongsTo{related: schema}, _parent_id) do
+  defp child_inserted_event(%BelongsTo{related: schema}, _parent_id) do
     {{schema, :inserted}, nil}
   end
 

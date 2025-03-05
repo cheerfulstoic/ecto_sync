@@ -2,6 +2,28 @@ defmodule EctoSyncTest do
   use EctoSync.RepoCase, async: false
   import EctoSync
 
+  @association_columns [:post_id, :label_id]
+  @posts_labels_events [
+    {%{
+       table_name: "posts_labels",
+       primary_key: :id,
+       columns: @association_columns,
+       association_columns: @association_columns
+     }, :deleted, extra_columns: @association_columns, label: :posts_labels_deleted},
+    {%{
+       table_name: "posts_labels",
+       primary_key: :id,
+       columns: @association_columns,
+       association_columns: @association_columns
+     }, :inserted, extra_columns: @association_columns, label: :posts_labels_inserted},
+    {%{
+       table_name: "posts_labels",
+       primary_key: :id,
+       columns: @association_columns,
+       association_columns: @association_columns
+     }, :updated, extra_columns: @association_columns, label: :posts_labels_updated}
+  ]
+
   setup [:do_setup]
 
   describe "all_events/3" do
@@ -15,19 +37,25 @@ defmodule EctoSyncTest do
 
     test ":assocs option with keyword assocs" do
       assert [
-               {Post, :inserted, [extra_columns: [:person_id]]},
-               {Post, :updated, [extra_columns: [:person_id]]},
-               {Post, :deleted, [extra_columns: [:person_id]]},
+               {Label, :deleted, [extra_columns: []]},
+               {Label, :inserted, [extra_columns: []]},
+               {Label, :updated, [extra_columns: []]},
+               {Person, :deleted, [extra_columns: []]},
                {Person, :inserted, [extra_columns: []]},
                {Person, :updated, [extra_columns: []]},
-               {Person, :deleted, [extra_columns: []]},
+               {Post, :deleted, [extra_columns: [:person_id]]},
+               {Post, :inserted, [extra_columns: [:person_id]]},
+               {Post, :updated, [extra_columns: [:person_id]]},
+               {PostsTags, :deleted, [extra_columns: [:tag_id, :post_id]]},
                {PostsTags, :inserted, [extra_columns: [:tag_id, :post_id]]},
                {PostsTags, :updated, [extra_columns: [:tag_id, :post_id]]},
-               {PostsTags, :deleted, [extra_columns: [:tag_id, :post_id]]},
+               {Tag, :deleted, [extra_columns: []]},
                {Tag, :inserted, [extra_columns: []]},
-               {Tag, :updated, [extra_columns: []]},
-               {Tag, :deleted, [extra_columns: []]}
-             ] == EctoSync.all_events(Post, assocs: [:person, :tags])
+               {Tag, :updated, [extra_columns: []]}
+               | @posts_labels_events
+             ] ==
+               EctoSync.all_events(Person, assocs: [posts: [:comments, :tags, :labels]])
+               |> Enum.sort()
     end
 
     test ":assocs option merges with other columns" do
@@ -723,26 +751,7 @@ defmodule EctoSyncTest do
       repo: TestRepo,
       pub_sub: EctoSync.PubSub,
       watchers:
-        [
-          {%{
-             table_name: "posts_labels",
-             primary_key: :id,
-             columns: [:label_id, :post_id],
-             association_columns: [:label_id, :post_id]
-           }, :updated, extra_columns: [:label_id, :post_id], label: :posts_labels_updated},
-          {%{
-             table_name: "posts_labels",
-             primary_key: :id,
-             columns: [:label_id, :post_id],
-             association_columns: [:label_id, :post_id]
-           }, :inserted, extra_columns: [:label_id, :post_id], label: :posts_labels_inserted},
-          {%{
-             table_name: "posts_labels",
-             primary_key: :id,
-             columns: [:label_id, :post_id],
-             association_columns: [:label_id, :post_id]
-           }, :deleted, extra_columns: [:label_id, :post_id], label: :posts_labels_deleted}
-        ]
+        []
         |> EctoSync.all_events(Post,
           assocs: [:person, :tags, :labels],
           extra_columns: [:person_id]
