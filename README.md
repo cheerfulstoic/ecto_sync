@@ -1,17 +1,27 @@
 # EctoSync
 
 **TLDR;**
-```
+
 Subscribe to events emitted by EctoWatch, cache the result, allow subscribers to sync.
-```
 
 ## Use cases
-### Schema:
-Post <-> PostsTags <-> Tag
 
-### Subscribe to alterations of assocs of loaded rows (in a LiveView for example):
-#### application.ex
+### Schema
+
+```mermaid
+erDiagram
+    Post }o--|| PostsTags : has
+    Tag }o--|| PostsTags : has
+
 ```
+
+'Post' <-> 'PostsTags' <-> 'Tag'
+
+### Subscribe to alterations of assocs of loaded rows (in a LiveView for example)
+
+#### application.ex
+
+```elixir
 children = [
   ...,
   {EctoSync,
@@ -19,8 +29,10 @@ children = [
    pub_sub: MyPubSub,
    watchers: EctoSync.all_events(Posts, assocs: true)
 ```
-#### PostLive.ex
-```
+
+#### post_live.ex
+
+```elixir
 alias MyApp.Posts.Post
 alias MyApp.Posts.Tag
 
@@ -38,17 +50,19 @@ def handle_info({{Tag, _event}, sync_args}, socket) do
   {:noreply, assign(socket, posts: posts)}
 end
 ```
+
 1. When a Tag is updated, all posts that contain that tag  will be updated.
 2. When a Tag is inserted, the tag will automatically be added to the corresponding post.
 
-The tag is loaded from the database once for each event handled by EctoSync. 
+The tag is loaded from the database once for each event handled by EctoSync.
 The result is then cached and this cached version will be used when other processes call
-`EctoSync.sync/2` with the args provided in `handle_info`. 
+`EctoSync.sync/2` with the args provided in `handle_info`.
 
+### Subscribe to insertions of assocs that can be used for row creation
 
-### Subscribe to insertions of assocs that can be used for row creation:
-#### PostForm.ex
-```
+#### post_form.ex
+
+```elixir
 def mount(params, session, socket) do
   tags = list_tags()
   if connected?(socket) do
@@ -87,8 +101,10 @@ def deps do
   ]
 end
 ```
+
 ### Modify lib/my_app/application.ex
-```
+
+```elixir
 children = [
   ...,
   {EctoSync,
@@ -104,4 +120,3 @@ children = [
 Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
 and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
 be found at <https://hexdocs.pm/ecto_sync>.
-
